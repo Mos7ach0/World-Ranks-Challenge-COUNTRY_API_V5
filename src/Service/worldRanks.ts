@@ -91,8 +91,24 @@ async function fetchPage(offset: number, signal?: AbortSignal): Promise<Page> {
   return response.json()
 }
 
-// v5 pagina (~250 paises): pedimos paginas de 100 hasta que meta.more sea false
+// Archivo generado en el deploy (public/countries.json). Si existe, no se llama a la API.
+async function fetchStatic(signal?: AbortSignal): Promise<Country[] | null> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}countries.json`, { signal })
+    if (!response.ok) return null
+    const data: unknown = await response.json()
+    return Array.isArray(data) ? (data as RawCountry[]).map(normalize) : null
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e
+    return null // no existe (en dev Vite devuelve HTML) -> usamos la API
+  }
+}
+
+// v5 pagina (~254 paises): pedimos paginas de 100 hasta que meta.more sea false
 export async function getAllCountries(signal?: AbortSignal): Promise<Country[]> {
+  const fromFile = await fetchStatic(signal)
+  if (fromFile) return fromFile
+
   const cached = readCache()
   if (cached) return cached
 
