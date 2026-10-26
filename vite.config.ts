@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
 
   return {
+    base: '/World-Ranks-Challenge-COUNTRY_API_V5/',
     resolve: {
       alias: { '@': '/src' },
     },
