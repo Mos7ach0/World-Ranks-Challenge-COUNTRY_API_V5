@@ -1,4 +1,3 @@
-# Descarga los datos en cada deploy usando el secret REST_COUNTRIES_API_KEY.
 name: Deploy to GitHub Pages
 
 on:
@@ -20,18 +19,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+
       - run: npm ci
+
       - name: Download countries
-        run: npm run fetch-data
         env:
           REST_COUNTRIES_API_KEY: ${{ secrets.REST_COUNTRIES_API_KEY }}
+        run: |
+          node --input-type=module <<'JS'
+          import { writeFileSync, mkdirSync } from 'node:fs'
+
+          const key = (process.env.REST_COUNTRIES_API_KEY || '').trim()
+          if (!key) { console.error('Falta el secret REST_COUNTRIES_API_KEY'); process.exit(1) }
+
+          const FIELDS = [
+            'names.common', 'flag.url_svg', 'population', 'area.kilometers',
+            'region', 'subregion', 'classification.sovereign', 'classification.un_member',
+          ].join(',')
+
+          const all = []
+          for (let offset = 0; ; ) {
+            const url = `https://api.restcountries.com/countries/v5?response_fields=${FIELDS}&limit=100&offset=${offset}`
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } })
+            if (!res.ok) {
+              console.error(`Error ${res.status}: ${(await res.text()).slice(0, 200)}`)
+              process.exit(1)
+            }
+            const { data } = await res.json()
+            const objects = data?.objects ?? []
+            all.push(...objects)
+            console.log(`offset ${offset}: +${objects.length} (total ${all.length}/${data?.meta?.total ?? '?'})`)
+            if (!data?.meta?.more || objects.length === 0) break
+            offset += objects.length
+          }
+
+          if (all.length === 0) { console.error('La API no devolvio paises'); process.exit(1) }
+          mkdirSync('public', { recursive: true })
+          writeFileSync('public/countries.json', JSON.stringify(all))
+          console.log(`Guardados ${all.length} paises`)
+          JS
+
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
